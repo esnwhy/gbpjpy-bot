@@ -4,7 +4,7 @@ import time
 
 app = Flask(__name__)
 
-# 重複防止用の記録
+# グローバルな記録用ディクショナリ
 last_signals = {}
 
 @app.route('/webhook', methods=['POST'])
@@ -17,12 +17,14 @@ def webhook():
     now = time.time()
 
     key = f"{symbol}_{signal}"
+    print(f"Current last_signals: {last_signals}")
+
     if key in last_signals and now - last_signals[key] < 60:
         print(f"[SKIP] Duplicate {signal} for {symbol} (within 60s)")
         return "Duplicate ignored", 200
 
     last_signals[key] = now
-    print(f"[TEST] Received signal: {signal} for {symbol}")
+    print(f"[TEST] Accepted signal: {signal} for {symbol} at {now}")
     return "Test order received", 200
 
 if __name__ == '__main__':
