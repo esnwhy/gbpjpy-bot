@@ -18,7 +18,10 @@ def webhook():
     try:
         data = request.get_json(force=True, silent=True)
         logging.info(f"Raw received data: {data}")
+        if not data:
+            return jsonify({'error': 'No JSON received'}), 400
     except Exception as e:
+        logging.error(f"JSON decode failed: {str(e)}")
         return jsonify({'error': 'Invalid JSON'}), 400
 
     signal = None
@@ -26,6 +29,12 @@ def webhook():
         signal = data.lower()
     elif isinstance(data, dict) and 'signal' in data:
         signal = data['signal'].lower()
+
+    # anybuy/anysell のマッピング
+    if signal == 'anybuy':
+        signal = 'buy'
+    elif signal == 'anysell':
+        signal = 'sell'
 
     if signal not in ['buy', 'sell']:
         logging.info("Invalid or missing signal.")
