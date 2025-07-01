@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: gbpjpy-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn main:app
+    envVars:
+      - key: ACCESS_TOKEN
+        value: YOUR_OANDA_ACCESS_TOKEN
+      - key: ACCOUNT_ID
+        value: YOUR_OANDA_ACCOUNT_ID
+      - key: NOTION_API_KEY
+        value: YOUR_NOTION_API_KEY
+      - key: NOTION_DATABASE_ID
+        value: YOUR_NOTION_DB_ID
