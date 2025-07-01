@@ -52,7 +52,7 @@ def get_unrealized_pl():
 
 def place_order(signal, retries=3):
     side = 'BUY' if signal == 'buy' else 'SELL'
-    units = "1000" if side == 'BUY' else "-1000"
+    units = "10000" if side == 'BUY' else "-10000"
     order = {
         "order": {
             "units": units,
