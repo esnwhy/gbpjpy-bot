@@ -1,41 +1,46 @@
-
 from flask import Flask, request
-import oanda_trade
-import notion_logger
+import oandapyV20
+import oandapyV20.endpoints.orders as orders
 import json
+import os
 
 app = Flask(__name__)
+
+account_id = os.environ.get("OANDA_ACCOUNT_ID")
+access_token = os.environ.get("OANDA_ACCESS_TOKEN")
+api = oandapyV20.API(access_token=access_token)
 
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        data = request.get_json(force=True)
-        print("✅ Webhook received!")
-        print("🔹 Raw data:", data)
+        message = request.data.decode("utf-8").strip().lower()
 
-        if not data or "signal" not in data:
-            return "❌ Missing 'signal' field in JSON", 400
+        print(f"Received raw message: {message}")
 
-        signal = data["signal"].lower()
-        print(f"🔍 Signal received: {signal}")
-
-        if signal == "anybuy":
-            result = oanda_trade.execute_trade("buy", 10000)
-            notion_logger.log_to_notion("BUY", result)
-            return "✅ Executed BUY", 200
-
-        elif signal == "anysell":
-            result = oanda_trade.execute_trade("sell", 10000)
-            notion_logger.log_to_notion("SELL", result)
-            return "✅ Executed SELL", 200
-
+        if "anybuy" in message:
+            order_type = "buy"
+        elif "anysell" in message:
+            order_type = "sell"
         else:
-            return f"❌ Unknown signal: {signal}", 400
+            return "Invalid signal", 400
+
+        units = 10000 if order_type == "buy" else -10000
+
+        order_data = {
+            "order": {
+                "instrument": "GBP_JPY",
+                "units": str(units),
+                "type": "MARKET",
+                "positionFill": "DEFAULT"
+            }
+        }
+
+        r = orders.OrderCreate(account_id, data=order_data)
+        api.request(r)
+
+        print(f"{order_type.upper()} order placed")
+        return f"{order_type.upper()} order placed", 200
 
     except Exception as e:
-        print("❌ Error processing webhook:", str(e))
-        return f"❌ Internal error: {str(e)}", 500
-
-@app.route("/", methods=["GET"])
-def index():
-    return "⚡ GBPJPY Bot is running.", 200
+        print(f"❌ Error processing webhook: {e}")
+        return f"Error: {e}", 500
