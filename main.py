@@ -1,46 +1,53 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
+import os
 import oandapyV20
 import oandapyV20.endpoints.orders as orders
-import json
-import os
 
 app = Flask(__name__)
 
-account_id = os.environ.get("OANDA_ACCOUNT_ID")
-access_token = os.environ.get("OANDA_ACCESS_TOKEN")
-api = oandapyV20.API(access_token=access_token)
+ACCOUNT_ID = os.getenv("OANDA_ACCOUNT_ID")
+ACCESS_TOKEN = os.getenv("OANDA_ACCESS_TOKEN")
+UNITS = int(os.getenv("TRADE_UNITS", 10000))  # default 10,000 units
+
+client = oandapyV20.API(access_token=ACCESS_TOKEN)
 
 @app.route("/", methods=["POST"])
 def webhook():
     try:
-        message = request.data.decode("utf-8").strip().lower()
+        data = request.get_json(force=True)
+        message = data.get("message", "").lower()
 
-        print(f"Received raw message: {message}")
-
-        if "anybuy" in message:
-            order_type = "buy"
-        elif "anysell" in message:
-            order_type = "sell"
-        else:
-            return "Invalid signal", 400
-
-        units = 10000 if order_type == "buy" else -10000
-
-        order_data = {
-            "order": {
-                "instrument": "GBP_JPY",
-                "units": str(units),
-                "type": "MARKET",
-                "positionFill": "DEFAULT"
+        if "buy" in message:
+            order_data = {
+                "order": {
+                    "instrument": "GBP_JPY",
+                    "units": str(UNITS),
+                    "type": "market",
+                    "positionFill": "DEFAULT"
+                }
             }
-        }
+            r = orders.OrderCreate(ACCOUNT_ID, data=order_data)
+            client.request(r)
+            return jsonify({"status": "buy order sent"}), 200
 
-        r = orders.OrderCreate(account_id, data=order_data)
-        api.request(r)
+        elif "sell" in message:
+            order_data = {
+                "order": {
+                    "instrument": "GBP_JPY",
+                    "units": str(-UNITS),
+                    "type": "market",
+                    "positionFill": "DEFAULT"
+                }
+            }
+            r = orders.OrderCreate(ACCOUNT_ID, data=order_data)
+            client.request(r)
+            return jsonify({"status": "sell order sent"}), 200
 
-        print(f"{order_type.upper()} order placed")
-        return f"{order_type.upper()} order placed", 200
+        else:
+            return jsonify({"error": "No valid signal found"}), 400
 
     except Exception as e:
-        print(f"❌ Error processing webhook: {e}")
-        return f"Error: {e}", 500
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(debug=True)
