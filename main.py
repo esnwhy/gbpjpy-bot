@@ -2,23 +2,24 @@ from flask import Flask, request, jsonify
 import os
 import datetime
 import requests
-import hashlib
 
 app = Flask(__name__)
 
-# === 環境変数設定 ===
+# 環境変数設定
 OANDA_API_URL = "https://api-fxtrade.oanda.com/v3/accounts"
 ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID")
 ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN")
-NOTION_URL = os.environ.get("NOTION_WEBHOOK_URL")
+NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
+NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
+
 ORDER_UNITS = 10000
-STOP_LOSS_PIPS = 0.30  # 30 pips
+STOP_LOSS_PIPS = 0.30
 HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
 }
 
-# === 重複検知キャッシュ ===
+# 重複検知キャッシュ
 recent_alerts = {}
 
 @app.route("/", methods=["POST"])
@@ -32,37 +33,48 @@ def webhook():
     price = float(data.get("price", "0"))
     timestamp = data.get("time", datetime.datetime.utcnow().isoformat())
 
-    # 重複チェックキー生成
     key = f"{ticker}:{signal}:{round(price, 3)}"
     now = datetime.datetime.utcnow()
-
-    # 直近の同一キーがあれば無視（1分以内）
     last_seen = recent_alerts.get(key)
     if last_seen and (now - last_seen).total_seconds() < 60:
         print(f"⚠️ Duplicate alert ignored: {key}")
         return jsonify({"status": "duplicate ignored"}), 200
     else:
-        recent_alerts[key] = now  # キャッシュ更新
+        recent_alerts[key] = now
 
-    # Notionへ送信
-    log_to_notion(signal, ticker, price, timestamp)
+    if "buy" in signal or "sell" in signal:
+        process_trade(signal, ticker, price, timestamp)
 
-    if "buy" in signal:
-        execute_order("buy", ticker, price)
-    elif "sell" in signal:
-        execute_order("sell", ticker, price)
+    return jsonify({"status": "processed"}), 200
 
-    return jsonify({"status": "order processed"}), 200
+def process_trade(signal, ticker, price, timestamp):
+    opposite = "sell" if "buy" in signal else "buy"
+    existing = find_open_position(opposite)
 
-def execute_order(signal_side, ticker, price):
-    close_opposite_positions(signal_side, ticker)
-    place_order(signal_side, ticker, price)
+    if existing:
+        entry_price = float(existing['properties']['Price']['number'])
+        direction = signal.split("+")[0]
+        profit = calc_profit(entry_price, price, direction)
+        page_id = existing["id"]
+        update_notion_closed(page_id, profit)
+        print(f"✅ Closed previous position. Profit: {profit}")
+    else:
+        log_to_notion(signal, ticker, price, timestamp)
 
-def close_opposite_positions(signal_side, ticker):
+    execute_order(signal.split("+")[0], ticker, price)
+
+def calc_profit(entry, exit, side):
+    diff = (exit - entry) if side == "buy" else (entry - exit)
+    return round(diff * ORDER_UNITS, 1)
+
+def execute_order(side, ticker, price):
+    close_opposite_positions(side, ticker)
+    place_order(side, ticker, price)
+
+def close_opposite_positions(side, ticker):
     url = f"{OANDA_API_URL}/{ACCOUNT_ID}/openPositions"
     response = requests.get(url, headers=HEADERS)
     if response.status_code != 200:
-        print("Failed to get positions.")
         return
 
     positions = response.json().get("positions", [])
@@ -71,53 +83,89 @@ def close_opposite_positions(signal_side, ticker):
             continue
         long_units = int(float(pos["long"]["units"]))
         short_units = int(float(pos["short"]["units"]))
+        if side == "buy" and short_units < 0:
+            close_position(ticker, "short")
+        elif side == "sell" and long_units > 0:
+            close_position(ticker, "long")
 
-        if signal_side == "buy" and short_units < 0:
-            print("🔁 Closing SHORT position before BUY")
-            close_position(ticker, "short", abs(short_units))
-        elif signal_side == "sell" and long_units > 0:
-            print("🔁 Closing LONG position before SELL")
-            close_position(ticker, "long", abs(long_units))
-
-def close_position(ticker, side, units):
-    close_data = {
-        f"{side}Units": "ALL"
-    }
+def close_position(ticker, side):
     url = f"{OANDA_API_URL}/{ACCOUNT_ID}/positions/{ticker}/close"
-    response = requests.put(url, headers=HEADERS, json=close_data)
-    print(f"❌ Closed {side.upper()} position: {response.status_code} - {response.text}")
+    response = requests.put(url, headers=HEADERS, json={f"{side}Units": "ALL"})
+    print(f"❌ Closed {side.upper()} position: {response.status_code}")
 
 def place_order(side, ticker, price):
     units = ORDER_UNITS if side == "buy" else -ORDER_UNITS
-    stop_loss_price = round(price - STOP_LOSS_PIPS, 3) if side == "buy" else round(price + STOP_LOSS_PIPS, 3)
+    sl_price = round(price - STOP_LOSS_PIPS, 3) if side == "buy" else round(price + STOP_LOSS_PIPS, 3)
     order_data = {
         "order": {
             "instrument": ticker,
             "units": str(units),
             "type": "MARKET",
             "positionFill": "DEFAULT",
-            "stopLossOnFill": {
-                "price": str(stop_loss_price)
-            }
+            "stopLossOnFill": {"price": str(sl_price)}
         }
     }
     url = f"{OANDA_API_URL}/{ACCOUNT_ID}/orders"
     response = requests.post(url, headers=HEADERS, json=order_data)
-    print(f"📤 Placed {side.upper()} order: {response.status_code} - {response.text}")
+    print(f"📤 Placed {side.upper()} order: {response.status_code}")
 
 def log_to_notion(signal, ticker, price, timestamp):
-    if NOTION_URL:
-        payload = {
-            "ticker": ticker,
-            "price": price,
-            "signal": signal,
-            "timestamp": timestamp
+    url = "https://api.notion.com/v1/pages"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+    payload = {
+        "parent": {"database_id": NOTION_DATABASE_ID},
+        "properties": {
+            "Ticker": {"title": [{"text": {"content": ticker}}]},
+            "Signal": {"rich_text": [{"text": {"content": signal}}]},
+            "Price": {"number": price},
+            "Timestamp": {"date": {"start": timestamp}},
+            "Status": {"select": {"name": "Open"}},
+            "Profit (JPY)": {"number": 0},
+            "Stop Loss Triggered": {"checkbox": False}
         }
-        try:
-            response = requests.post(NOTION_URL, json=payload)
-            print(f"📝 Notion log sent: {response.status_code}")
-        except Exception as e:
-            print(f"⚠️ Notion webhook failed: {e}")
+    }
+    requests.post(url, headers=headers, json=payload)
+
+def find_open_position(direction):
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+    query = {
+        "filter": {
+            "and": [
+                {"property": "Status", "select": {"equals": "Open"}},
+                {"property": "Signal", "rich_text": {"contains": direction}}
+            ]
+        },
+        "page_size": 1,
+        "sorts": [{"timestamp": "created_time", "direction": "descending"}]
+    }
+    response = requests.post(url, headers=headers, json=query)
+    results = response.json().get("results", [])
+    return results[0] if results else None
+
+def update_notion_closed(page_id, profit):
+    url = f"https://api.notion.com/v1/pages/{page_id}"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28"
+    }
+    payload = {
+        "properties": {
+            "Status": {"select": {"name": "Closed"}},
+            "Profit (JPY)": {"number": profit},
+            "Stop Loss Triggered": {"checkbox": False}
+        }
+    }
+    requests.patch(url, headers=headers, json=payload)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
