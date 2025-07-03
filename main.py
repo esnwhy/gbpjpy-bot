@@ -2,10 +2,11 @@ from flask import Flask, request, jsonify
 import os
 import datetime
 import requests
+import hashlib
 
 app = Flask(__name__)
 
-# 環境変数設定
+# === 環境変数設定 ===
 OANDA_API_URL = "https://api-fxtrade.oanda.com/v3/accounts"
 ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID")
 ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN")
@@ -16,6 +17,9 @@ HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
 }
+
+# === 重複検知キャッシュ ===
+recent_alerts = {}
 
 @app.route("/", methods=["POST"])
 def webhook():
@@ -28,6 +32,19 @@ def webhook():
     price = float(data.get("price", "0"))
     timestamp = data.get("time", datetime.datetime.utcnow().isoformat())
 
+    # 重複チェックキー生成
+    key = f"{ticker}:{signal}:{round(price, 3)}"
+    now = datetime.datetime.utcnow()
+
+    # 直近の同一キーがあれば無視（1分以内）
+    last_seen = recent_alerts.get(key)
+    if last_seen and (now - last_seen).total_seconds() < 60:
+        print(f"⚠️ Duplicate alert ignored: {key}")
+        return jsonify({"status": "duplicate ignored"}), 200
+    else:
+        recent_alerts[key] = now  # キャッシュ更新
+
+    # Notionへ送信
     log_to_notion(signal, ticker, price, timestamp)
 
     if "buy" in signal:

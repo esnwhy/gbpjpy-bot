@@ -1,12 +1,14 @@
 services:
   - type: web
-    name: notion-webhook-server
+    name: gbpjpy-bot
     env: python
     plan: free
     buildCommand: ""
-    startCommand: "python notion_webhook.py"
+    startCommand: "python main.py"
     envVars:
-      - key: NOTION_DATABASE_ID
-        value: "your-database-id"
-      - key: NOTION_TOKEN
-        value: "your-secret-integration-token"
+      - key: OANDA_ACCOUNT_ID
+        value: "your-account-id"
+      - key: OANDA_ACCESS_TOKEN
+        value: "your-oanda-token"
+      - key: NOTION_WEBHOOK_URL
+        value: "https://your-notion-webhook"
