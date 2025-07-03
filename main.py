@@ -5,21 +5,19 @@ import requests
 
 app = Flask(__name__)
 
-# 環境変数設定
 OANDA_API_URL = "https://api-fxtrade.oanda.com/v3/accounts"
 ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID")
 ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN")
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN")
 NOTION_DATABASE_ID = os.environ.get("NOTION_DATABASE_ID")
 
-ORDER_UNITS = 10000
-STOP_LOSS_PIPS = 0.30
+ORDER_UNITS = 40000
+STOP_LOSS_PIPS = 0.20
 HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
 }
 
-# 重複検知キャッシュ
 recent_alerts = {}
 
 @app.route("/", methods=["POST"])
