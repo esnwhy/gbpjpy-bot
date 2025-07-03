@@ -1,14 +1,12 @@
 services:
   - type: web
-    name: oanda-webhook-bot
+    name: notion-webhook-server
     env: python
     plan: free
     buildCommand: ""
-    startCommand: "python main.py"
+    startCommand: "python notion_webhook.py"
     envVars:
-      - key: OANDA_ACCOUNT_ID
-        value: "your-account-id"
-      - key: OANDA_ACCESS_TOKEN
-        value: "your-oanda-token"
-      - key: NOTION_WEBHOOK_URL
-        value: "https://your-notion-webhook"
+      - key: NOTION_DATABASE_ID
+        value: "your-database-id"
+      - key: NOTION_TOKEN
+        value: "your-secret-integration-token"

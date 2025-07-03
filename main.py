@@ -98,9 +98,9 @@ def log_to_notion(signal, ticker, price, timestamp):
         }
         try:
             response = requests.post(NOTION_URL, json=payload)
-            print(f"📝 Notion log: {response.status_code}")
+            print(f"📝 Notion log sent: {response.status_code}")
         except Exception as e:
-            print(f"⚠️ Notion logging failed: {e}")
+            print(f"⚠️ Notion webhook failed: {e}")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
