@@ -10,8 +10,8 @@ OANDA_API_URL = "https://api-fxtrade.oanda.com/v3/accounts"
 ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID")
 ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN")
 
-ORDER_UNITS = 30000  # ← 変更: 注文数量を30000に
-STOP_LOSS_PIPS = 0.15  # ← 変更: ロスカット15pips (0.15)
+ORDER_UNITS = 20000  # ← 変更: 注文数量を30000に
+STOP_LOSS_PIPS = 0.45  # ← 変更: ロスカット15pips (0.15)
 HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
