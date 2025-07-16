@@ -10,8 +10,7 @@ OANDA_API_URL = "https://api-fxtrade.oanda.com/v3/accounts"
 ACCOUNT_ID = os.environ.get("OANDA_ACCOUNT_ID")
 ACCESS_TOKEN = os.environ.get("OANDA_ACCESS_TOKEN")
 
-ORDER_UNITS = 20000  # ← 変更: 注文数量を30000に
-STOP_LOSS_PIPS = 0.45  # ← 変更: ロスカット15pips (0.15)
+ORDER_UNITS = 20000
 HEADERS = {
     "Authorization": f"Bearer {ACCESS_TOKEN}",
     "Content-Type": "application/json"
@@ -46,7 +45,7 @@ def process_trade(signal, ticker, price, timestamp):
 
 def execute_order(side, ticker, price):
     close_opposite_positions(side, ticker)
-    return place_order(side, ticker, price)
+    return place_order(side, ticker)
 
 def close_opposite_positions(side, ticker):
     url = f"{OANDA_API_URL}/{ACCOUNT_ID}/openPositions"
@@ -70,16 +69,14 @@ def close_position(ticker, side):
     response = requests.put(url, headers=HEADERS, json={f"{side}Units": "ALL"})
     print(f"❌ Closed {side.upper()} position: {response.status_code}")
 
-def place_order(side, ticker, price):
+def place_order(side, ticker):
     units = ORDER_UNITS if side == "buy" else -ORDER_UNITS
-    sl_price = round(price - STOP_LOSS_PIPS, 3) if side == "buy" else round(price + STOP_LOSS_PIPS, 3)
     order_data = {
         "order": {
             "instrument": ticker,
             "units": str(units),
             "type": "MARKET",
-            "positionFill": "DEFAULT",
-            "stopLossOnFill": {"price": str(sl_price)}
+            "positionFill": "DEFAULT"
         }
     }
     url = f"{OANDA_API_URL}/{ACCOUNT_ID}/orders"
